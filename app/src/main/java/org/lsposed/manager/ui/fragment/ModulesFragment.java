@@ -120,13 +120,13 @@ public class ModulesFragment extends BaseFragment implements ModuleUtil.ModuleLi
         searchListener = new SearchView.OnQueryTextListener() {
             @Override
             public boolean onQueryTextSubmit(String query) {
-                adapters.forEach(adapter -> adapter.getFilter().filter(query));
+                adapters.get(binding.viewPager.getCurrentItem()).refresh();
                 return false;
             }
 
             @Override
             public boolean onQueryTextChange(String newText) {
-                adapters.forEach(adapter -> adapter.getFilter().filter(newText));
+                adapters.get(binding.viewPager.getCurrentItem()).refresh();
                 return false;
             }
         };
@@ -165,12 +165,14 @@ public class ModulesFragment extends BaseFragment implements ModuleUtil.ModuleLi
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         moduleUtil.addListener(this);
+        updateModuleSummary();
     }
 
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         binding = FragmentPagerBinding.inflate(inflater, container, false);
+        binding.appBar.setLiftable(true);
         setupToolbar(binding.toolbar, R.string.Modules, R.menu.menu_modules);
         binding.viewPager.setAdapter(new PagerAdapter(this));
         binding.viewPager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
@@ -258,6 +260,15 @@ public class ModulesFragment extends BaseFragment implements ModuleUtil.ModuleLi
     @Override
     public void onModulesReloaded() {
         adapters.forEach(ModuleAdapter::refresh);
+        updateModuleSummary();
+    }
+
+    private void updateModuleSummary() {
+        var moduleCount = moduleUtil.getEnabledModulesCount();
+        runOnUiThread(() -> {
+            binding.toolbar.setSubtitle(moduleCount == -1 ? getString(R.string.loading) : getResources().getQuantityString(R.plurals.modules_enabled_count, moduleCount, moduleCount));
+            binding.toolbarLayout.setSubtitle(binding.toolbar.getSubtitle());
+        });
     }
 
     @Override
@@ -355,6 +366,8 @@ public class ModulesFragment extends BaseFragment implements ModuleUtil.ModuleLi
     }
 
     public static class ModuleListFragment extends Fragment {
+        public ItemRepoRecyclerviewBinding binding;
+
         @Nullable
         @Override
         public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
@@ -364,12 +377,28 @@ public class ModulesFragment extends BaseFragment implements ModuleUtil.ModuleLi
                 return null;
             }
             int position = arguments.getInt("position");
-            ItemRepoRecyclerviewBinding binding = ItemRepoRecyclerviewBinding.inflate(getLayoutInflater(), container, false);
+            binding = ItemRepoRecyclerviewBinding.inflate(getLayoutInflater(), container, false);
             binding.recyclerView.setAdapter(fragment.adapters.get(position));
             RecyclerView.LayoutManager layoutManager = new LinearLayoutManager(requireActivity());
             binding.recyclerView.setLayoutManager(layoutManager);
             RecyclerViewKt.fixEdgeEffect(binding.recyclerView, false, true);
             return binding.getRoot();
+        }
+
+        @Override
+        public void onResume() {
+            super.onResume();
+            var parent = getParentFragment();
+            if (parent instanceof ModulesFragment) {
+                binding.recyclerView.getBorderViewDelegate().setBorderVisibilityChangedListener((top, oldTop, bottom, oldBottom) -> ((ModulesFragment) parent).binding.appBar.setLifted(!top));
+                ((ModulesFragment) parent).binding.appBar.setLifted(!binding.recyclerView.getBorderViewDelegate().isShowingTopBorder());
+            }
+        }
+
+        @Override
+        public void onPause() {
+            super.onPause();
+            binding.recyclerView.getBorderViewDelegate().setBorderVisibilityChangedListener(null);
         }
     }
 
